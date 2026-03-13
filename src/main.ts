@@ -12,6 +12,8 @@ const particlesContainer = document.getElementById('particles') as HTMLDivElemen
 // ============================================
 
 let isMusicPlaying = false;
+let userWantsMusic = true;
+let pausedByBackground = false;
 
 // Initialize music
 // function initMusic(): void {
@@ -46,6 +48,7 @@ function initMusic(): void {
       playPromise
         .then(() => {
           isMusicPlaying = true;
+          userWantsMusic = true;
           musicControl?.classList.remove('muted');
         })
         .catch(() => {
@@ -55,9 +58,17 @@ function initMusic(): void {
 
           // Wait for first user interaction
           const startMusic = () => {
-            bgMusic.play();
-            isMusicPlaying = true;
-            musicControl?.classList.remove('muted');
+            if (!userWantsMusic) return;
+            bgMusic
+              .play()
+              .then(() => {
+                isMusicPlaying = true;
+                musicControl?.classList.remove('muted');
+              })
+              .catch(() => {
+                isMusicPlaying = false;
+                musicControl?.classList.add('muted');
+              });
 
             document.removeEventListener('click', startMusic);
             document.removeEventListener('touchstart', startMusic);
@@ -77,16 +88,70 @@ function toggleMusic(): void {
   if (isMusicPlaying) {
     bgMusic.pause();
     musicControl?.classList.add('muted');
+    userWantsMusic = false;
   } else {
-    bgMusic.play();
-    musicControl?.classList.remove('muted');
+    userWantsMusic = true;
+    bgMusic
+      .play()
+      .then(() => {
+        isMusicPlaying = true;
+        musicControl?.classList.remove('muted');
+      })
+      .catch(() => {
+        isMusicPlaying = false;
+        musicControl?.classList.add('muted');
+      });
   }
 
-  isMusicPlaying = !isMusicPlaying;
+  if (userWantsMusic === false) {
+    isMusicPlaying = false;
+  }
 }
 
 // Event listener for music control button
 musicControl?.addEventListener('click', toggleMusic);
+
+function pauseForBackground(): void {
+  if (!bgMusic) return;
+  if (bgMusic.paused) return;
+
+  pausedByBackground = true;
+  bgMusic.pause();
+  isMusicPlaying = false;
+  musicControl?.classList.add('muted');
+}
+
+function resumeFromBackground(): void {
+  if (!bgMusic) return;
+  if (!pausedByBackground) return;
+  pausedByBackground = false;
+
+  if (!userWantsMusic) return;
+
+  bgMusic
+    .play()
+    .then(() => {
+      isMusicPlaying = true;
+      musicControl?.classList.remove('muted');
+    })
+    .catch(() => {
+      isMusicPlaying = false;
+      musicControl?.classList.add('muted');
+    });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    pauseForBackground();
+  } else {
+    resumeFromBackground();
+  }
+});
+
+// Extra coverage for mobile/desktop cases where visibilitychange isn't enough
+window.addEventListener('pagehide', pauseForBackground);
+window.addEventListener('blur', pauseForBackground);
+window.addEventListener('focus', resumeFromBackground);
 
 // ============================================
 // FLOATING PARTICLES
@@ -227,6 +292,38 @@ function initGlowEffect(): void {
 }
 
 // ============================================
+// WELCOME TEXT ANIMATION (staggered reveal)
+// ============================================
+
+function enhanceWelcomeAnimation(): void {
+  const el = document.querySelector('.welcome-guide') as HTMLElement | null;
+  if (!el) return;
+
+  const raw = (el.textContent ?? '').trim();
+  if (!raw) return;
+
+  // Avoid double-processing (e.g. hot reload)
+  if (el.dataset.enhanced === 'true') return;
+  el.dataset.enhanced = 'true';
+
+  el.classList.add('welcome-guide--split');
+  el.textContent = '';
+
+  const words = raw.split(/\s+/);
+  for (let i = 0; i < words.length; i++) {
+    const word = document.createElement('span');
+    word.className = 'welcome-word';
+    word.textContent = words[i];
+    word.style.setProperty('--d', `${i * 55}ms`);
+    el.appendChild(word);
+
+    if (i < words.length - 1) {
+      el.appendChild(document.createTextNode(' '));
+    }
+  }
+}
+
+// ============================================
 // INITIALIZE ON DOM LOAD
 // ============================================
 
@@ -236,6 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initScrollAnimations();
   initSmoothScroll();
   initGlowEffect();
+  enhanceWelcomeAnimation();
 
   // Add loaded class for any initial animations
   document.body.classList.add('loaded');
